@@ -12,6 +12,7 @@ public class TurnoDTO
     [Required(ErrorMessage = "La hora es obligatoria")]
     public TimeOnly Hora { get; set; }
 
+    public DateTime? CierreAutomaticoUtc { get; set; }
     public EnumEstadoTurno EstadoTurno { get; set; }
 
     public DateTime FechaInicio => Fecha.Date.Add(Hora.ToTimeSpan());

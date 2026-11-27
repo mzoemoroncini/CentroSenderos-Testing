@@ -9,6 +9,7 @@ namespace CentroSenderos_2026_Shared.DTO
         public int Id { get; set; }
         public DateTime FechaInicio { get; set; }
         public DateTime FechaFin { get; set; }
+        public DateTime? CierreAutomaticoUtc { get; set; }
         public EnumEstadoTurno EstadoTurno { get; set; }
 
         public int TipoTurnoId { get; set; }

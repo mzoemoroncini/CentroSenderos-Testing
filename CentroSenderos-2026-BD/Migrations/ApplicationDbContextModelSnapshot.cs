@@ -1348,6 +1348,16 @@ namespace CentroSenderos_2026_BD.Migrations
                     b.Property<int>("TipoTurnoId")
                         .HasColumnType("integer");
 
+                    b.Property<DateTime?>("CierreAutomaticoUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("RevisionCierre")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("TieneIntervencionManual")
+                        .HasColumnType("boolean");
+
                     b.HasKey("Id");
 
                     b.HasIndex("DetalleLiquidacionId");
@@ -1392,6 +1402,15 @@ namespace CentroSenderos_2026_BD.Migrations
 
                     b.Property<int>("TurnoId")
                         .HasColumnType("integer");
+
+                    b.Property<string>("UltimaAsistenciaRegistradaPorId")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("UltimaAsistenciaRegistradaUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("AsistenciaAutomatica")
+                        .HasColumnType("boolean");
 
                     b.HasKey("Id");
 

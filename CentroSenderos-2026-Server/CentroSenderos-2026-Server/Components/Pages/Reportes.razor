@@ -1,0 +1,330 @@
+@page "/reportes"
+@rendermode InteractiveServer
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Socio,admin")]
+@using CentroSenderos_2026_BD
+@using CentroSenderos_2026_Shared.Enum
+@using Microsoft.EntityFrameworkCore
+@inject IServiceScopeFactory Scopes
+@inject ILogger<Reportes> Logger
+
+<PageTitle>Reportes | Centro Senderos</PageTitle>
+
+<section class="reportes">
+    <header><h1><i class="bi bi-bar-chart-line" aria-hidden="true"></i> Reportes</h1></header>
+
+    <form class="reportes-filtros" @onsubmit="Consultar" @onsubmit:preventDefault>
+        <label>Desde <input type="date" @bind="desde" required /></label>
+        <label>Hasta <input type="date" @bind="hasta" required /></label>
+        <button type="submit" disabled="@cargando">Consultar</button>
+    </form>
+
+    @if (cargando)
+    {
+        <p role="status">Cargando reportes…</p>
+    }
+    @if (error is not null)
+    {
+        <p role="alert">@error</p>
+    }
+    @if (consultado)
+    {
+        <div class="reportes-filtros">
+            <label>Profesional
+                <select @bind="profesionalId" @bind:after="AplicarFiltros">
+                    <option value="0">Todos</option>
+                    @foreach (var profesional in profesionales)
+                    {
+                        <option value="@profesional.Id">@profesional.Nombre</option>
+                    }
+                </select>
+            </label>
+            <label>Consultorio
+                <select @bind="consultorioId" @bind:after="AplicarFiltros">
+                    <option value="0">Todos</option>
+                    @foreach (var consultorio in consultorios)
+                    {
+                        <option value="@consultorio.Id">@consultorio.Nombre</option>
+                    }
+                </select>
+            </label>
+            <label>Tipo de turno
+                <select @bind="tipoId" @bind:after="AplicarFiltros">
+                    <option value="0">Todos</option>
+                    @foreach (var tipo in tipos)
+                    {
+                        <option value="@tipo.Id">@tipo.Nombre</option>
+                    }
+                </select>
+            </label>
+            <label>Estado del turno
+                <select @bind="estado" @bind:after="AplicarFiltros">
+                    <option value="">Todos</option>
+                    @foreach (var valor in Estados)
+                    {
+                        <option value="@valor">@NombreEstado(valor)</option>
+                    }
+                </select>
+            </label>
+        </div>
+
+        <div class="reportes-indicadores" aria-label="Resumen del período">
+            <div><span>Turnos</span><strong>@filtrados.Count</strong></div>
+            <div><span>Completados (automáticos)</span><strong>@completados (@automaticos)</strong></div>
+            <div><span>Reservados</span><strong>@reservados</strong></div>
+            <div><span>Cancelados</span><strong>@cancelados</strong></div>
+            <div><span>Turnos ausentes</span><strong>@ausentes</strong></div>
+        </div>
+
+        <div class="reportes-vistas" role="group" aria-label="Tipo de reporte">
+            <button type="button" aria-pressed="@(!mostrarAsistencias)" @onclick="() => CambiarVista(false)">Turnos</button>
+            <button type="button" aria-pressed="@mostrarAsistencias" @onclick="() => CambiarVista(true)">Asistencias</button>
+        </div>
+
+        @if (mostrarAsistencias)
+        {
+            <div class="reportes-filtros">
+                <label>Origen
+                    <select @bind="origen" @bind:after="AplicarFiltros">
+                        <option value="">Todos</option>
+                        <option value="manual">Manual</option>
+                        <option value="automatico">Automático</option>
+                    </select>
+                </label>
+                <label>Asistencia
+                    <select @bind="resultado" @bind:after="AplicarFiltros">
+                        <option value="">Todas</option>
+                        <option value="asistio">Asistió</option>
+                        <option value="ausente">No asistió</option>
+                        <option value="pendiente">Sin registrar</option>
+                    </select>
+                </label>
+                <label>Paciente
+                    <input type="search" @bind="buscarPaciente" @bind:event="oninput" @bind:after="AplicarFiltros" />
+                </label>
+            </div>
+            <div class="reportes-indicadores">
+                <div><span>Asistió</span><strong>@asistencias.Count(fila => fila.Paciente.Estado == EnumAsistenciaPaciente.asistio)</strong></div>
+                <div><span>No asistió</span><strong>@asistencias.Count(fila => fila.Paciente.Estado == EnumAsistenciaPaciente.ausente)</strong></div>
+                <div><span>Sin registrar</span><strong>@asistencias.Count(fila => fila.Paciente.Estado is null)</strong></div>
+            </div>
+        }
+
+        @if (Total == 0)
+        {
+            <p role="status">No hay resultados para estos filtros.</p>
+        }
+        else
+        {
+            <div class="reportes-tabla" tabindex="0" role="region" aria-label="Resultados">
+                <table>
+                    <thead>
+                        <tr>
+                            <th scope="col">Fecha y hora</th>
+                            @if (mostrarAsistencias)
+                            {
+                                <th scope="col">Paciente</th><th scope="col">Asistencia</th><th scope="col">Origen</th>
+                            }
+                            else
+                            {
+                                <th scope="col">Tipo</th><th scope="col">Consultorio</th><th scope="col">Profesionales</th><th scope="col">Pacientes</th><th scope="col">Estado</th>
+                            }
+                            <th scope="col">Turno</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (mostrarAsistencias)
+                        {
+                            @foreach (var fila in asistencias.Skip(pagina * PorPagina).Take(PorPagina))
+                            {
+                                <tr>
+                                    <td>@fila.Turno.Fecha.ToString("dd/MM/yyyy HH:mm")</td>
+                                    <td>@fila.Paciente.Nombre</td>
+                                    <td>@NombreAsistencia(fila.Paciente.Estado)</td>
+                                    <td>@(fila.Paciente.Estado is null ? "—" : fila.Paciente.Automatica ? "Automático" : "Manual")</td>
+                                    <td><a href="@EnlaceTurno(fila.Turno)" data-enhance-nav="false">Ver turno</a></td>
+                                </tr>
+                            }
+                        }
+                        else
+                        {
+                            @foreach (var turno in filtrados.Skip(pagina * PorPagina).Take(PorPagina))
+                            {
+                                <tr>
+                                    <td>@turno.Fecha.ToString("dd/MM/yyyy HH:mm")</td>
+                                    <td>@turno.Tipo.Nombre</td>
+                                    <td>@turno.Consultorio.Nombre</td>
+                                    <td>@string.Join(", ", turno.Profesionales.Select(p => p.Nombre))</td>
+                                    <td>@turno.Pacientes.Count</td>
+                                    <td>@NombreEstado(turno.Estado) @(turno.Automatico ? "· Automático" : "")</td>
+                                    <td><a href="@EnlaceTurno(turno)" data-enhance-nav="false">Ver turno</a></td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <div class="reportes-paginas">
+                <button type="button" disabled="@(pagina == 0)" @onclick="() => pagina--">Anterior</button>
+                <span>@(pagina * PorPagina + 1)–@Math.Min((pagina + 1) * PorPagina, Total) de @Total</span>
+                <button type="button" disabled="@((pagina + 1) * PorPagina >= Total)" @onclick="() => pagina++">Siguiente</button>
+            </div>
+        }
+    }
+</section>
+
+@code {
+    private const int PorPagina = 20;
+    private static readonly EnumEstadoTurno[] Estados =
+        [EnumEstadoTurno.reservado, EnumEstadoTurno.atendido, EnumEstadoTurno.cancelado, EnumEstadoTurno.ausente];
+
+    private DateTime desde;
+    private DateTime hasta;
+    private int profesionalId;
+    private int consultorioId;
+    private int tipoId;
+    private EnumEstadoTurno? estado;
+    private string origen = "";
+    private string resultado = "";
+    private string buscarPaciente = "";
+    private bool mostrarAsistencias;
+    private bool cargando;
+    private bool consultado;
+    private string? error;
+    private int pagina;
+    private int completados;
+    private int automaticos;
+    private int reservados;
+    private int cancelados;
+    private int ausentes;
+    private List<TurnoReporte> turnos = [];
+    private List<TurnoReporte> filtrados = [];
+    private List<AsistenciaReporte> asistencias = [];
+    private List<Opcion> profesionales = [];
+    private List<Opcion> consultorios = [];
+    private List<Opcion> tipos = [];
+    private int Total => mostrarAsistencias ? asistencias.Count : filtrados.Count;
+
+    protected override Task OnInitializedAsync()
+    {
+        hasta = TimeZoneInfo.ConvertTimeBySystemTimeZoneId(DateTime.UtcNow, "America/Argentina/Cordoba").Date;
+        desde = new DateTime(hasta.Year, hasta.Month, 1);
+        return Consultar();
+    }
+
+    private async Task Consultar()
+    {
+        if (cargando)
+            return;
+
+        if (hasta < desde || hasta == DateTime.MaxValue.Date || (hasta - desde).TotalDays > 365)
+        {
+            error = "Elegí un período válido de hasta 366 días.";
+            return;
+        }
+
+        error = null;
+        cargando = true;
+        try
+        {
+            var inicio = DateTime.SpecifyKind(desde.Date, DateTimeKind.Utc);
+            var fin = DateTime.SpecifyKind(hasta.Date.AddDays(1), DateTimeKind.Utc);
+            await using var scope = Scopes.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            turnos = await db.Turnos.AsNoTracking().AsSplitQuery()
+                .Where(t => t.EstadoRegistro == EnumEstadoRegistro.activo && Estados.Contains(t.EstadoTurno)
+                    && t.FechaInicio >= inicio && t.FechaInicio < fin)
+                .OrderByDescending(t => t.FechaInicio).ThenByDescending(t => t.Id)
+                .Select(t => new TurnoReporte(t.Id, t.FechaInicio, t.EstadoTurno, t.CierreAutomaticoUtc.HasValue,
+                    new Opcion(t.TipoTurnoId, t.TipoTurnos!.Tipo),
+                    new Opcion(t.TipoConsultorioId, t.TipoConsultorios!.Tipo),
+                    t.TurnoProfesionales.Where(p => p.EstadoRegistro == EnumEstadoRegistro.activo)
+                        .Select(p => new Opcion(p.ProfesionalId, p.Profesionales!.Nombre)).ToList(),
+                    t.TurnoPacientes.Where(p => p.EstadoRegistro == EnumEstadoRegistro.activo)
+                        .Select(p => new PacienteReporte(p.Pacientes!.Nombre, p.Asistencia, p.AsistenciaAutomatica)).ToList()))
+                .ToListAsync();
+
+            profesionales = OrdenarOpciones(turnos.SelectMany(t => t.Profesionales));
+            consultorios = OrdenarOpciones(turnos.Select(t => t.Consultorio));
+            tipos = OrdenarOpciones(turnos.Select(t => t.Tipo));
+            profesionalId = 0;
+            consultorioId = 0;
+            tipoId = 0;
+            AplicarFiltros();
+            consultado = true;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error al consultar los reportes de turnos.");
+            error = "No pudimos cargar el período. Intentá nuevamente.";
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    private void AplicarFiltros()
+    {
+        pagina = 0;
+        filtrados = turnos.Where(t =>
+            (profesionalId == 0 || t.Profesionales.Any(p => p.Id == profesionalId)) &&
+            (consultorioId == 0 || t.Consultorio.Id == consultorioId) &&
+            (tipoId == 0 || t.Tipo.Id == tipoId) &&
+            (estado is null || t.Estado == estado)).ToList();
+
+        completados = filtrados.Count(t => t.Estado == EnumEstadoTurno.atendido);
+        automaticos = filtrados.Count(t => t.Automatico);
+        reservados = filtrados.Count(t => t.Estado == EnumEstadoTurno.reservado);
+        cancelados = filtrados.Count(t => t.Estado == EnumEstadoTurno.cancelado);
+        ausentes = filtrados.Count(t => t.Estado == EnumEstadoTurno.ausente);
+
+        asistencias = filtrados.SelectMany(t => t.Pacientes.Select(p => new AsistenciaReporte(t, p)))
+            .Where(f => f.Paciente.Nombre.Contains(buscarPaciente.Trim(), StringComparison.CurrentCultureIgnoreCase))
+            .Where(f => origen switch
+            {
+                "manual" => f.Paciente.Estado.HasValue && !f.Paciente.Automatica,
+                "automatico" => f.Paciente.Automatica,
+                _ => true
+            })
+            .Where(f => resultado switch
+            {
+                "asistio" => f.Paciente.Estado == EnumAsistenciaPaciente.asistio,
+                "ausente" => f.Paciente.Estado == EnumAsistenciaPaciente.ausente,
+                "pendiente" => f.Paciente.Estado is null,
+                _ => true
+            }).ToList();
+    }
+
+    private void CambiarVista(bool asistencias)
+    {
+        mostrarAsistencias = asistencias;
+        pagina = 0;
+    }
+
+    private static List<Opcion> OrdenarOpciones(IEnumerable<Opcion> opciones) =>
+        opciones.DistinctBy(opcion => opcion.Id).OrderBy(opcion => opcion.Nombre).ToList();
+
+    private static string EnlaceTurno(TurnoReporte turno) => $"turnos?detalle={turno.Id}";
+
+    private static string NombreEstado(EnumEstadoTurno valor) => valor switch
+    {
+        EnumEstadoTurno.reservado => "Reservado",
+        EnumEstadoTurno.atendido => "Completado",
+        EnumEstadoTurno.cancelado => "Cancelado",
+        EnumEstadoTurno.ausente => "Ausente",
+        _ => "Disponible"
+    };
+
+    private static string NombreAsistencia(EnumAsistenciaPaciente? valor) => valor switch
+    {
+        EnumAsistenciaPaciente.asistio => "Asistió",
+        EnumAsistenciaPaciente.ausente => "No asistió",
+        _ => "Sin registrar"
+    };
+
+    private sealed record Opcion(int Id, string Nombre);
+    private sealed record PacienteReporte(string Nombre, EnumAsistenciaPaciente? Estado, bool Automatica);
+    private sealed record TurnoReporte(int Id, DateTime Fecha, EnumEstadoTurno Estado, bool Automatico,
+        Opcion Tipo, Opcion Consultorio, List<Opcion> Profesionales, List<PacienteReporte> Pacientes);
+    private sealed record AsistenciaReporte(TurnoReporte Turno, PacienteReporte Paciente);
+}

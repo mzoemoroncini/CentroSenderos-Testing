@@ -599,7 +599,8 @@ namespace CentroSenderos_2026_Server.Controllers
                 var actualizado = await repositorio.CambiarAsistenciaPaciente(
                     turnoId,
                     pacienteId,
-                    dto.Asistencia
+                    dto.Asistencia,
+                    User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
                 );
 
                 if (!actualizado)

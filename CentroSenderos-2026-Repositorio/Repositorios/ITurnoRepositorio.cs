@@ -25,6 +25,6 @@ namespace CentroSenderos_2026_Repositorio.Repositorios
         Task<bool> DeleteTurno(int id);
         Task<bool> CambiarEstadoTurno(int id,CentroSenderos_2026_Shared.Enum.EnumEstadoTurno estado);
         Task<int> CancelarTurnos(int turnoId,bool cancelarSiguientes);
-        Task<bool> CambiarAsistenciaPaciente(int turnoId,int pacienteId,EnumAsistenciaPaciente? asistencia);
+        Task<bool> CambiarAsistenciaPaciente(int turnoId, int pacienteId, EnumAsistenciaPaciente? asistencia, string? usuarioId = null);
     }
 }

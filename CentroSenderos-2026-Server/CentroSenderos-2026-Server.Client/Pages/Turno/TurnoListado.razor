@@ -623,6 +623,11 @@
 
                                     <strong>@paciente.NombrePaciente</strong>
 
+                                    @if (paciente.AsistenciaAutomatica)
+                                    {
+                                        <span>Asistió · registro automático</span>
+                                    }
+
                                     <span>
                                         @(string.IsNullOrWhiteSpace(paciente.NombreObraSocial)
                                             ? "Sin obra social histórica"
@@ -774,6 +779,10 @@
                         Estado del turno
                     </span>
 
+                    @if (turnoSeleccionado.CierreAutomaticoUtc.HasValue)
+                    {
+                        <p class="asistencia-ayuda">Completado automáticamente</p>
+                    }
                     @if (estadoSeleccionado != turnoSeleccionado.EstadoTurno)
                     {
                         <span class="detalle-estado-pendiente">
@@ -2429,6 +2438,7 @@
             }
 
             turnoSeleccionado.EstadoTurno = EnumEstadoTurno.cancelado;
+            turnoSeleccionado.CierreAutomaticoUtc = null;
             estadoSeleccionado = EnumEstadoTurno.cancelado;
 
             if (cancelarSiguientes)
@@ -2496,6 +2506,7 @@
             }
 
             turno.EstadoTurno = nuevoEstado;
+            turno.CierreAutomaticoUtc = null;
 
             // Recargar los datos del turno para reflejar la asistencia.
             var respuestaTurno = await Http.Get<TurnoDTO>(
@@ -2552,7 +2563,7 @@
     {
         if (GuardandoDetalle ||
             turnoSeleccionado is null ||
-            paciente.Asistencia == asistencia)
+            (paciente.Asistencia == asistencia && !paciente.AsistenciaAutomatica))
         {
             return;
         }
@@ -2587,6 +2598,7 @@
             }
 
             paciente.Asistencia = asistencia;
+            paciente.AsistenciaAutomatica = false;
 
             mensajeAsistencia = "Asistencia guardada.";
         }
