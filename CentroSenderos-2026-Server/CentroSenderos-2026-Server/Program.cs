@@ -54,7 +54,6 @@ builder.Services.Configure<Microsoft.AspNetCore.SignalR.HubOptions>(options =>
 var strConn = builder.Configuration.GetConnectionString("DefaultConnection")
     ?? throw new InvalidOperationException("La cadena de conexión no existe.");
 
-builder.Services.AddHostedService<CentroSenderos_2026_Server.Turnos.CierreAutomaticoTurnos>();
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(strConn));
 

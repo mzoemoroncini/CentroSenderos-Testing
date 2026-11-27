@@ -69,7 +69,7 @@
 
         <div class="reportes-indicadores" aria-label="Resumen del período">
             <div><span>Turnos</span><strong>@filtrados.Count</strong></div>
-            <div><span>Completados (automáticos)</span><strong>@completados (@automaticos)</strong></div>
+            <div><span>Completados</span><strong>@completados</strong></div>
             <div><span>Reservados</span><strong>@reservados</strong></div>
             <div><span>Cancelados</span><strong>@cancelados</strong></div>
             <div><span>Turnos ausentes</span><strong>@ausentes</strong></div>
@@ -83,13 +83,6 @@
         @if (mostrarAsistencias)
         {
             <div class="reportes-filtros">
-                <label>Origen
-                    <select @bind="origen" @bind:after="AplicarFiltros">
-                        <option value="">Todos</option>
-                        <option value="manual">Manual</option>
-                        <option value="automatico">Automático</option>
-                    </select>
-                </label>
                 <label>Asistencia
                     <select @bind="resultado" @bind:after="AplicarFiltros">
                         <option value="">Todas</option>
@@ -122,7 +115,7 @@
                             <th scope="col">Fecha y hora</th>
                             @if (mostrarAsistencias)
                             {
-                                <th scope="col">Paciente</th><th scope="col">Asistencia</th><th scope="col">Origen</th>
+                                <th scope="col">Paciente</th><th scope="col">Asistencia</th>
                             }
                             else
                             {
@@ -140,7 +133,6 @@
                                     <td>@fila.Turno.Fecha.ToString("dd/MM/yyyy HH:mm")</td>
                                     <td>@fila.Paciente.Nombre</td>
                                     <td>@NombreAsistencia(fila.Paciente.Estado)</td>
-                                    <td>@(fila.Paciente.Estado is null ? "—" : fila.Paciente.Automatica ? "Automático" : "Manual")</td>
                                     <td><a href="@EnlaceTurno(fila.Turno)" data-enhance-nav="false">Ver turno</a></td>
                                 </tr>
                             }
@@ -155,7 +147,7 @@
                                     <td>@turno.Consultorio.Nombre</td>
                                     <td>@string.Join(", ", turno.Profesionales.Select(p => p.Nombre))</td>
                                     <td>@turno.Pacientes.Count</td>
-                                    <td>@NombreEstado(turno.Estado) @(turno.Automatico ? "· Automático" : "")</td>
+                                    <td>@NombreEstado(turno.Estado)</td>
                                     <td><a href="@EnlaceTurno(turno)" data-enhance-nav="false">Ver turno</a></td>
                                 </tr>
                             }
@@ -183,7 +175,6 @@
     private int consultorioId;
     private int tipoId;
     private EnumEstadoTurno? estado;
-    private string origen = "";
     private string resultado = "";
     private string buscarPaciente = "";
     private bool mostrarAsistencias;
@@ -192,7 +183,6 @@
     private string? error;
     private int pagina;
     private int completados;
-    private int automaticos;
     private int reservados;
     private int cancelados;
     private int ausentes;
@@ -234,13 +224,13 @@
                 .Where(t => t.EstadoRegistro == EnumEstadoRegistro.activo && Estados.Contains(t.EstadoTurno)
                     && t.FechaInicio >= inicio && t.FechaInicio < fin)
                 .OrderByDescending(t => t.FechaInicio).ThenByDescending(t => t.Id)
-                .Select(t => new TurnoReporte(t.Id, t.FechaInicio, t.EstadoTurno, t.CierreAutomaticoUtc.HasValue,
+                .Select(t => new TurnoReporte(t.Id, t.FechaInicio, t.EstadoTurno,
                     new Opcion(t.TipoTurnoId, t.TipoTurnos!.Tipo),
                     new Opcion(t.TipoConsultorioId, t.TipoConsultorios!.Tipo),
                     t.TurnoProfesionales.Where(p => p.EstadoRegistro == EnumEstadoRegistro.activo)
                         .Select(p => new Opcion(p.ProfesionalId, p.Profesionales!.Nombre)).ToList(),
                     t.TurnoPacientes.Where(p => p.EstadoRegistro == EnumEstadoRegistro.activo)
-                        .Select(p => new PacienteReporte(p.Pacientes!.Nombre, p.Asistencia, p.AsistenciaAutomatica)).ToList()))
+                        .Select(p => new PacienteReporte(p.Pacientes!.Nombre, p.Asistencia)).ToList()))
                 .ToListAsync();
 
             profesionales = OrdenarOpciones(turnos.SelectMany(t => t.Profesionales));
@@ -273,19 +263,12 @@
             (estado is null || t.Estado == estado)).ToList();
 
         completados = filtrados.Count(t => t.Estado == EnumEstadoTurno.atendido);
-        automaticos = filtrados.Count(t => t.Automatico);
         reservados = filtrados.Count(t => t.Estado == EnumEstadoTurno.reservado);
         cancelados = filtrados.Count(t => t.Estado == EnumEstadoTurno.cancelado);
         ausentes = filtrados.Count(t => t.Estado == EnumEstadoTurno.ausente);
 
         asistencias = filtrados.SelectMany(t => t.Pacientes.Select(p => new AsistenciaReporte(t, p)))
             .Where(f => f.Paciente.Nombre.Contains(buscarPaciente.Trim(), StringComparison.CurrentCultureIgnoreCase))
-            .Where(f => origen switch
-            {
-                "manual" => f.Paciente.Estado.HasValue && !f.Paciente.Automatica,
-                "automatico" => f.Paciente.Automatica,
-                _ => true
-            })
             .Where(f => resultado switch
             {
                 "asistio" => f.Paciente.Estado == EnumAsistenciaPaciente.asistio,
@@ -323,8 +306,8 @@
     };
 
     private sealed record Opcion(int Id, string Nombre);
-    private sealed record PacienteReporte(string Nombre, EnumAsistenciaPaciente? Estado, bool Automatica);
-    private sealed record TurnoReporte(int Id, DateTime Fecha, EnumEstadoTurno Estado, bool Automatico,
+    private sealed record PacienteReporte(string Nombre, EnumAsistenciaPaciente? Estado);
+    private sealed record TurnoReporte(int Id, DateTime Fecha, EnumEstadoTurno Estado,
         Opcion Tipo, Opcion Consultorio, List<Opcion> Profesionales, List<PacienteReporte> Pacientes);
     private sealed record AsistenciaReporte(TurnoReporte Turno, PacienteReporte Paciente);
 }

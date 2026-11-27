@@ -33,9 +33,6 @@ namespace CentroSenderos_2026_BD.Datos.Entity
          */
         public string? NombreObraSocial { get; set; }
 
-        public string? UltimaAsistenciaRegistradaPorId { get; set; }
-        public DateTime? UltimaAsistenciaRegistradaUtc { get; set; }
-        public bool AsistenciaAutomatica { get; set; }
         public EnumAsistenciaPaciente? Asistencia { get; set; }
     }
 }

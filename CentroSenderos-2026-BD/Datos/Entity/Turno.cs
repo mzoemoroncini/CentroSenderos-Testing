@@ -9,12 +9,6 @@ namespace CentroSenderos_2026_BD.Datos.Entity
     {
         public EnumEstadoTurno EstadoTurno { get; set; } = EnumEstadoTurno.disponible;
 
-        [ConcurrencyCheck]
-        public long RevisionCierre { get; set; }
-
-        public bool TieneIntervencionManual { get; set; }
-        public DateTime? CierreAutomaticoUtc { get; set; }
-
         [Required(ErrorMessage = "La fecha de inicio es obligatoria")]
         public DateTime FechaInicio { get; set; } = DateTime.MinValue;
 

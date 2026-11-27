@@ -46,7 +46,6 @@ namespace CentroSenderos_2026_Repositorio.Repositorios
 
                     FechaFin = t.FechaFin.ToLocalTime(),
                     EstadoTurno = t.EstadoTurno,
-                    CierreAutomaticoUtc = t.CierreAutomaticoUtc,
                     TipoTurnoId = t.TipoTurnoId,
                     TipoConsultorioId = t.TipoConsultorioId,
                     SerieTurnoId = t.SerieTurnoId,
@@ -147,7 +146,6 @@ namespace CentroSenderos_2026_Repositorio.Repositorios
                             relacion.Pacientes.TipoDiagnosticos != null
                                 ? relacion.Pacientes.TipoDiagnosticos.Tipo
                                 : null, 
-                            AsistenciaAutomatica = relacion.AsistenciaAutomatica,
                             Asistencia = relacion.Asistencia
                         })
                         .ToList()
@@ -176,7 +174,6 @@ namespace CentroSenderos_2026_Repositorio.Repositorios
                     FechaInicio = t.FechaInicio.ToLocalTime(),
                     FechaFin = t.FechaFin.ToLocalTime(),
                     EstadoTurno = t.EstadoTurno,
-                    CierreAutomaticoUtc = t.CierreAutomaticoUtc,
                     TipoTurnoId = t.TipoTurnoId,
 
                     NombreTipoTurno = t.TipoTurnos != null
@@ -319,7 +316,6 @@ namespace CentroSenderos_2026_Repositorio.Repositorios
                             relacion.Pacientes.TipoDiagnosticos != null
                                 ? relacion.Pacientes.TipoDiagnosticos.Tipo
                                 : null,
-                            AsistenciaAutomatica = relacion.AsistenciaAutomatica,
                             Asistencia = relacion.Asistencia
                         })
                         .ToList()
@@ -1296,13 +1292,6 @@ namespace CentroSenderos_2026_Repositorio.Repositorios
 
             turno.FechaInicio = fechaInicioUtc;
             turno.FechaFin = fechaFinUtc;
-            var cambioEstado = turno.EstadoTurno != dto.EstadoTurno;
-            turno.RevisionCierre++;
-            if (cambioEstado)
-            {
-                turno.TieneIntervencionManual = true;
-                turno.CierreAutomaticoUtc = null;
-            }
             turno.EstadoTurno = dto.EstadoTurno;
             turno.TipoTurnoId = tipoTurnoId;
             turno.TipoConsultorioId = dto.TipoConsultorioId;
@@ -1318,7 +1307,10 @@ namespace CentroSenderos_2026_Repositorio.Repositorios
                 );
 
             var asistenciasGuardadas = turno.TurnoPacientes
-                .ToDictionary(relacion => relacion.PacienteId);
+                .ToDictionary(
+                    relacion => relacion.PacienteId,
+                    relacion => relacion.Asistencia
+                );
 
             var datosPacientesActuales = await context.Pacientes
                 .Where(paciente => pacienteIds.Contains(paciente.Id))
@@ -1370,18 +1362,12 @@ namespace CentroSenderos_2026_Repositorio.Repositorios
                             )
                         );
 
-                    var asistenciaGuardada = asistenciasGuardadas.GetValueOrDefault(pacienteId);
-
                     return new TurnoPaciente
                     {
                         TurnoId = turno.Id,
                         PacienteId = pacienteId,
 
-                        AsistenciaAutomatica = (!cambioEstado || pacienteIds.Count != 1 || dto.EstadoTurno == EnumEstadoTurno.cancelado) &&
-                            asistenciaGuardada?.AsistenciaAutomatica == true,
-                        UltimaAsistenciaRegistradaPorId = asistenciaGuardada?.UltimaAsistenciaRegistradaPorId,
-                        UltimaAsistenciaRegistradaUtc = asistenciaGuardada?.UltimaAsistenciaRegistradaUtc,
-                        Asistencia = cambioEstado && pacienteIds.Count == 1
+                        Asistencia = pacienteIds.Count == 1
                             ? dto.EstadoTurno switch
                             {
                                 EnumEstadoTurno.ausente =>
@@ -1393,9 +1379,9 @@ namespace CentroSenderos_2026_Repositorio.Repositorios
                                 EnumEstadoTurno.reservado =>
                                     null,
 
-                                _ => asistenciaGuardada?.Asistencia
+                                _ => asistenciasGuardadas.GetValueOrDefault(pacienteId)
                             }
-                            : asistenciaGuardada?.Asistencia,
+                            : asistenciasGuardadas.GetValueOrDefault(pacienteId),
 
                         TipoObraSocialId = teniaObraSocialGuardada
                             ? datosGuardados!.TipoObraSocialId
@@ -1457,7 +1443,6 @@ namespace CentroSenderos_2026_Repositorio.Repositorios
                 return false;
             }
 
-            turno.RevisionCierre++;
             turno.EstadoRegistro = EnumEstadoRegistro.inactivo;
 
             await context.SaveChangesAsync();
@@ -1763,10 +1748,19 @@ namespace CentroSenderos_2026_Repositorio.Repositorios
                     }
                 );
 
-            var estadosGuardados = turnosSerie.ToDictionary(turno => turno.Id, turno => turno.EstadoTurno);
             var asistenciasGuardadas = turnosSerie
-                .SelectMany(turno => turno.TurnoPacientes)
-                .ToDictionary(paciente => (paciente.TurnoId, paciente.PacienteId));
+                .SelectMany(turno =>
+                    turno.TurnoPacientes.Select(relacion => new
+                    {
+                        TurnoId = turno.Id,
+                        relacion.PacienteId,
+                        relacion.Asistencia
+                    })
+                )
+                .ToDictionary(
+                    item => (item.TurnoId, item.PacienteId),
+                    item => item.Asistencia
+                );
 
             var datosPacientesActuales = await context.Pacientes
                 .Where(paciente => pacienteIds.Contains(paciente.Id))
@@ -1809,12 +1803,6 @@ namespace CentroSenderos_2026_Repositorio.Repositorios
                     turno.FechaFin =
                         nuevaFechaInicio.AddMinutes(duracionMinutos);
 
-                    turno.RevisionCierre++;
-                    if (turno.EstadoTurno != dto.EstadoTurno)
-                    {
-                        turno.TieneIntervencionManual = true;
-                        turno.CierreAutomaticoUtc = null;
-                    }
                     turno.EstadoTurno = dto.EstadoTurno;
                     turno.TipoTurnoId = tipoTurnoId;
                     turno.TipoConsultorioId = dto.TipoConsultorioId;
@@ -1857,18 +1845,12 @@ namespace CentroSenderos_2026_Repositorio.Repositorios
                                     )
                                 );
 
-                            var asistenciaGuardada = asistenciasGuardadas.GetValueOrDefault((turno.Id, pacienteId));
-
                             return new TurnoPaciente
                             {
                                 TurnoId = turno.Id,
                                 PacienteId = pacienteId,
 
-                                AsistenciaAutomatica = (estadosGuardados[turno.Id] == dto.EstadoTurno || pacienteIds.Count != 1 || dto.EstadoTurno == EnumEstadoTurno.cancelado)
-                                    && asistenciaGuardada?.AsistenciaAutomatica == true,
-                                UltimaAsistenciaRegistradaPorId = asistenciaGuardada?.UltimaAsistenciaRegistradaPorId,
-                                UltimaAsistenciaRegistradaUtc = asistenciaGuardada?.UltimaAsistenciaRegistradaUtc,
-                                Asistencia = estadosGuardados[turno.Id] != dto.EstadoTurno && pacienteIds.Count == 1
+                                Asistencia = pacienteIds.Count == 1
                                 ? dto.EstadoTurno switch
                                 {
                                     EnumEstadoTurno.ausente =>
@@ -1880,9 +1862,13 @@ namespace CentroSenderos_2026_Repositorio.Repositorios
                                     EnumEstadoTurno.reservado =>
                                         null,
 
-                                    _ => asistenciaGuardada?.Asistencia
+                                    _ => asistenciasGuardadas.GetValueOrDefault(
+                                        (turno.Id, pacienteId)
+                                    )
                                 }
-                                : asistenciaGuardada?.Asistencia,
+                                : asistenciasGuardadas.GetValueOrDefault(
+                                    (turno.Id, pacienteId)
+                                ),
 
                                 TipoObraSocialId = teniaObraSocialGuardada
                                     ? datosGuardados!.TipoObraSocialId
@@ -1994,9 +1980,6 @@ namespace CentroSenderos_2026_Repositorio.Repositorios
                 }
             }
 
-            turno.RevisionCierre++;
-            turno.TieneIntervencionManual = true;
-            turno.CierreAutomaticoUtc = null;
             turno.EstadoTurno = estado;
 
             // Si hay un único paciente, sincronizar su asistencia.
@@ -2007,9 +1990,6 @@ namespace CentroSenderos_2026_Repositorio.Repositorios
             if (pacientesActivos.Count == 1)
             {
                 var paciente = pacientesActivos[0];
-
-                if (estado != EnumEstadoTurno.cancelado)
-                    paciente.AsistenciaAutomatica = false;
 
                 if (estado == EnumEstadoTurno.ausente)
                 {
@@ -2092,9 +2072,6 @@ namespace CentroSenderos_2026_Repositorio.Repositorios
 
                 foreach (var turno in turnosACancelar)
                 {
-                    turno.RevisionCierre++;
-                    turno.TieneIntervencionManual = true;
-                    turno.CierreAutomaticoUtc = null;
                     turno.EstadoTurno = EnumEstadoTurno.cancelado;
                 }
 
@@ -2110,7 +2087,7 @@ namespace CentroSenderos_2026_Repositorio.Repositorios
             }
         }
 
-        public async Task<bool> CambiarAsistenciaPaciente(int turnoId, int pacienteId, EnumAsistenciaPaciente? asistencia, string? usuarioId = null)
+        public async Task<bool> CambiarAsistenciaPaciente(int turnoId,int pacienteId,EnumAsistenciaPaciente? asistencia)
         {
             if (asistencia.HasValue &&
                 asistencia.Value != EnumAsistenciaPaciente.asistio &&
@@ -2122,7 +2099,6 @@ namespace CentroSenderos_2026_Repositorio.Repositorios
             }
 
             var relacion = await context.Set<TurnoPaciente>()
-                .Include(item => item.Turnos)
                 .FirstOrDefaultAsync(item =>
                     item.TurnoId == turnoId &&
                     item.PacienteId == pacienteId &&
@@ -2136,12 +2112,7 @@ namespace CentroSenderos_2026_Repositorio.Repositorios
                 return false;
             }
 
-            relacion.Turnos!.RevisionCierre++;
-            relacion.Turnos.TieneIntervencionManual = true;
-            relacion.AsistenciaAutomatica = false;
             relacion.Asistencia = asistencia;
-            relacion.UltimaAsistenciaRegistradaPorId = usuarioId;
-            relacion.UltimaAsistenciaRegistradaUtc = DateTime.UtcNow;
 
             await context.SaveChangesAsync();
 
